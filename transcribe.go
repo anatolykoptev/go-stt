@@ -39,7 +39,7 @@ func (c *Client) TranscribeVerbose(ctx context.Context, audioPath string) (*Verb
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("STT error (status %d): %s", status, string(respBody))
+		return nil, &Error{StatusCode: status, Message: string(respBody)}
 	}
 
 	var result VerboseResponse
@@ -70,7 +70,7 @@ func (c *Client) TranscribeRaw(ctx context.Context, audioPath string) ([]byte, e
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("STT error (status %d): %s", status, string(respBody))
+		return nil, &Error{StatusCode: status, Message: string(respBody)}
 	}
 	return respBody, nil
 }
@@ -92,7 +92,7 @@ func (c *Client) transcribeFromReader(ctx context.Context, r io.Reader, filename
 		return nil, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("STT error (status %d): %s", status, string(respBody))
+		return nil, &Error{StatusCode: status, Message: string(respBody)}
 	}
 
 	var result Response
@@ -123,7 +123,7 @@ func (c *Client) Models(ctx context.Context) (*ModelList, error) {
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("models error (status %d): %s", resp.StatusCode, string(respBody))
+		return nil, &Error{StatusCode: resp.StatusCode, Message: string(respBody)}
 	}
 
 	var result ModelList

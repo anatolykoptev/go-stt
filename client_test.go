@@ -3,6 +3,7 @@ package stt_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -130,8 +131,15 @@ func TestTranscribeHTTPError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := err.Error(); got != "STT error (status 500): model not loaded" {
-		t.Errorf("error = %q", got)
+	var sttErr *stt.Error
+	if !errors.As(err, &sttErr) {
+		t.Fatalf("expected *stt.Error, got %T: %v", err, err)
+	}
+	if sttErr.StatusCode != http.StatusInternalServerError {
+		t.Errorf("StatusCode = %d, want %d", sttErr.StatusCode, http.StatusInternalServerError)
+	}
+	if sttErr.Message != "model not loaded" {
+		t.Errorf("Message = %q, want %q", sttErr.Message, "model not loaded")
 	}
 }
 
