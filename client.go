@@ -23,6 +23,8 @@ type Client struct {
 	diarizeSpeakers int
 	keywords        []string
 	customSpelling  map[string]string
+	retry           *retryConfig
+	cb              *circuitBreaker
 }
 
 // Option configures the Client.
@@ -76,6 +78,30 @@ func WithKeywords(kw []string) Option {
 // WithCustomSpelling sets custom spelling corrections (original → corrected).
 func WithCustomSpelling(m map[string]string) Option {
 	return func(c *Client) { c.customSpelling = m }
+}
+
+// WithRetry enables automatic retry with exponential backoff for transient errors.
+// maxAttempts is the total number of attempts (including the first); baseDelay is the
+// initial wait before the second attempt.
+func WithRetry(maxAttempts int, baseDelay time.Duration) Option {
+	return func(c *Client) {
+		c.retry = &retryConfig{
+			maxAttempts: maxAttempts,
+			baseDelay:   baseDelay,
+			maxDelay:    30 * time.Second, //nolint:mnd
+		}
+	}
+}
+
+// WithCircuitBreaker enables a circuit breaker that stops sending requests after
+// maxFails consecutive transient failures until the cooldown period has elapsed.
+func WithCircuitBreaker(maxFails int, cooldown time.Duration) Option {
+	return func(c *Client) {
+		c.cb = &circuitBreaker{
+			maxFails: maxFails,
+			cooldown: cooldown,
+		}
+	}
 }
 
 // New creates an STT client for the given base URL (e.g. "http://127.0.0.1:8092").

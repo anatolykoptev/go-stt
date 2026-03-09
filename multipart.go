@@ -76,7 +76,7 @@ func (c *Client) writeOptionalFields(w *multipart.Writer) error {
 }
 
 // postTranscription sends a multipart request to /v1/audio/transcriptions and returns raw bytes.
-func (c *Client) postTranscription(ctx context.Context, body *bytes.Buffer, contentType string) ([]byte, int, error) {
+func (c *Client) postTranscription(ctx context.Context, body io.Reader, contentType string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/audio/transcriptions", body)
 	if err != nil {
 		return nil, 0, fmt.Errorf("create request: %w", err)

@@ -1,6 +1,7 @@
 package stt
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -33,23 +34,30 @@ func (c *Client) TranscribeVerbose(ctx context.Context, audioPath string) (*Verb
 	if err != nil {
 		return nil, err
 	}
+	snapshot := body.Bytes()
 
-	respBody, status, err := c.postTranscription(ctx, body, ct)
-	if err != nil {
-		return nil, err
-	}
-	if status != http.StatusOK {
-		return nil, &Error{StatusCode: status, Message: string(respBody)}
+	do := func() (*VerboseResponse, error) {
+		respBody, status, err := c.postTranscription(ctx, bytes.NewReader(snapshot), ct)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, &Error{StatusCode: status, Message: string(respBody)}
+		}
+		var result VerboseResponse
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("unmarshal verbose response: %w", err)
+		}
+		if result.Language == "" {
+			result.Language = c.language
+		}
+		return &result, nil
 	}
 
-	var result VerboseResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal verbose response: %w", err)
+	if c.retry != nil {
+		return doWithRetry(ctx, c.retry, c.cb, do)
 	}
-	if result.Language == "" {
-		result.Language = c.language
-	}
-	return &result, nil
+	return do()
 }
 
 // TranscribeRaw sends the audio file and returns the raw response bytes (useful for text/srt/vtt).
@@ -64,15 +72,23 @@ func (c *Client) TranscribeRaw(ctx context.Context, audioPath string) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
+	snapshot := body.Bytes()
 
-	respBody, status, err := c.postTranscription(ctx, body, ct)
-	if err != nil {
-		return nil, err
+	do := func() ([]byte, error) {
+		respBody, status, err := c.postTranscription(ctx, bytes.NewReader(snapshot), ct)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, &Error{StatusCode: status, Message: string(respBody)}
+		}
+		return respBody, nil
 	}
-	if status != http.StatusOK {
-		return nil, &Error{StatusCode: status, Message: string(respBody)}
+
+	if c.retry != nil {
+		return doWithRetry(ctx, c.retry, c.cb, do)
 	}
-	return respBody, nil
+	return do()
 }
 
 // TranscribeReader accepts an io.Reader instead of a file path.
@@ -86,49 +102,63 @@ func (c *Client) transcribeFromReader(ctx context.Context, r io.Reader, filename
 	if err != nil {
 		return nil, err
 	}
+	snapshot := body.Bytes()
 
-	respBody, status, err := c.postTranscription(ctx, body, ct)
-	if err != nil {
-		return nil, err
-	}
-	if status != http.StatusOK {
-		return nil, &Error{StatusCode: status, Message: string(respBody)}
+	do := func() (*Response, error) {
+		respBody, status, err := c.postTranscription(ctx, bytes.NewReader(snapshot), ct)
+		if err != nil {
+			return nil, err
+		}
+		if status != http.StatusOK {
+			return nil, &Error{StatusCode: status, Message: string(respBody)}
+		}
+		var result Response
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("unmarshal response: %w", err)
+		}
+		if result.Language == "" {
+			result.Language = c.language
+		}
+		return &result, nil
 	}
 
-	var result Response
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+	if c.retry != nil {
+		return doWithRetry(ctx, c.retry, c.cb, do)
 	}
-	if result.Language == "" {
-		result.Language = c.language
-	}
-	return &result, nil
+	return do()
 }
 
 // Models fetches the list of available models from GET /v1/models.
 func (c *Client) Models(ctx context.Context) (*ModelList, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+	do := func() (*ModelList, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/models", nil)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("send request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read response: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, &Error{StatusCode: resp.StatusCode, Message: string(respBody)}
+		}
+
+		var result ModelList
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return nil, fmt.Errorf("unmarshal models: %w", err)
+		}
+		return &result, nil
 	}
 
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("send request: %w", err)
+	if c.retry != nil {
+		return doWithRetry(ctx, c.retry, c.cb, do)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, &Error{StatusCode: resp.StatusCode, Message: string(respBody)}
-	}
-
-	var result ModelList
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal models: %w", err)
-	}
-	return &result, nil
+	return do()
 }
