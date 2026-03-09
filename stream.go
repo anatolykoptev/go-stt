@@ -133,6 +133,16 @@ func (sc *StreamClient) Done() <-chan struct{} {
 	return sc.done
 }
 
+// ForceClose closes the underlying WebSocket connection immediately without
+// sending a CloseStream control message. Use when graceful close is not possible.
+func (sc *StreamClient) ForceClose() {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if sc.conn != nil {
+		sc.conn.Close() //nolint:errcheck // best-effort force close
+	}
+}
+
 // sendControl sends a JSON text frame with {"type": typeName}.
 func (sc *StreamClient) sendControl(typeName string) error {
 	sc.mu.Lock()
