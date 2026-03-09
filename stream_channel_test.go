@@ -171,22 +171,22 @@ func TestStreamFileCancel(t *testing.T) {
 	})
 	defer srv.Close()
 
-	// 32000 bytes = 1s of 16kHz s16le audio.
+	// 320000 bytes = 10s of 16kHz s16le audio — guarantees context cancels mid-stream.
 	f, err := os.CreateTemp(t.TempDir(), "audio*.pcm")
 	if err != nil {
 		t.Fatalf("create temp: %v", err)
 	}
-	_, _ = f.Write(make([]byte, 32000))
+	_, _ = f.Write(make([]byte, 320000))
 	_ = f.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	_, err = stt.StreamFile(
 		ctx,
 		wsURL(srv.URL),
 		f.Name(),
-		stt.WithChunkDuration(50*time.Millisecond),
+		stt.WithChunkDuration(100*time.Millisecond),
 		stt.WithStreamSampleRate(16000),
 	)
 	if err == nil {
