@@ -3,7 +3,11 @@
 # Gate = `make preflight` (gofmt + vet + build + race tests).
 name: preflight
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
 
 permissions:
   contents: read
