@@ -24,6 +24,7 @@ func TestChannelStreamReceive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamWithChannels: %v", err)
 	}
+	defer cs.ForceClose()
 
 	var got stt.StreamEvent
 	select {
