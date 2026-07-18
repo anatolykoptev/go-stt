@@ -289,7 +289,10 @@ func (sc *StreamClient) sendControl(typeName string) error {
 	if sc.conn == nil {
 		return fmt.Errorf("stream not connected")
 	}
-	msg, _ := json.Marshal(map[string]string{"type": typeName})
+	msg, err := json.Marshal(map[string]string{"type": typeName})
+	if err != nil {
+		return fmt.Errorf("ws control %s: marshal: %w", typeName, err)
+	}
 	if err := sc.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 		return fmt.Errorf("ws control %s: %w", typeName, err)
 	}
