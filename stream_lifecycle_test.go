@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/goleak"
 
 	stt "github.com/anatolykoptev/go-stt"
 )
@@ -29,6 +30,11 @@ func TestCloseBlocksForever_ServerHangs(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	// Ignore server-side goroutines (the mock server handler is blocked on
+	// time.After and won't exit until srv.Close() tears it down). We only
+	// care about client-side readLoop leaks.
+	opts := goleak.IgnoreCurrent()
+	t.Cleanup(func() { goleak.VerifyNone(t, opts) })
 	// Give the readLoop a moment to enter conn.ReadMessage().
 	time.Sleep(50 * time.Millisecond)
 
@@ -61,6 +67,8 @@ func TestForceCloseConcurrentReadLoop_Race(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	opts := goleak.IgnoreCurrent()
+	t.Cleanup(func() { goleak.VerifyNone(t, opts) })
 	// Let readLoop enter the blocking ReadMessage call.
 	time.Sleep(50 * time.Millisecond)
 
@@ -97,6 +105,8 @@ func TestConnectTwiceNoPanic(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("first connect: %v", err)
 	}
+	opts := goleak.IgnoreCurrent()
+	t.Cleanup(func() { goleak.VerifyNone(t, opts) })
 
 	// Second Connect must return an error (already connected) and NOT panic.
 	secondErr := sc.Connect(context.Background())

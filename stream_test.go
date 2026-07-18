@@ -90,6 +90,7 @@ func TestStreamConnect(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	defer sc.ForceClose()
 	time.Sleep(50 * time.Millisecond)
 
 	evts := h.Events()
@@ -140,6 +141,7 @@ func TestStreamSendAndFinalize(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	defer sc.ForceClose()
 	if err := sc.Send([]byte{0x00, 0x01}); err != nil {
 		t.Fatalf("send: %v", err)
 	}

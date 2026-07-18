@@ -96,6 +96,7 @@ func TestStreamServerSendsInvalidJSON(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	defer sc.ForceClose()
 	time.Sleep(80 * time.Millisecond)
 
 	if errs := h.Errors(); len(errs) == 0 {
@@ -124,6 +125,7 @@ func TestChannelStreamEventsDropped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StreamWithChannels: %v", err)
 	}
+	defer cs.ForceClose()
 
 	select {
 	case <-serverDone:
@@ -131,9 +133,6 @@ func TestChannelStreamEventsDropped(t *testing.T) {
 		t.Fatal("timeout waiting for server to finish sending")
 	}
 	time.Sleep(80 * time.Millisecond) // let readLoop process remaining frames
-
-	// Stream must still be usable (not blocked/panicked) after overflowing the buffer.
-	cs.ForceClose()
 }
 
 func TestStreamFileEmptyFile(t *testing.T) {
