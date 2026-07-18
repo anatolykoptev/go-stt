@@ -31,6 +31,7 @@ const (
 // StreamClient manages a WebSocket connection to /v1/listen.
 type StreamClient struct {
 	wsURL   string
+	wsErr   error
 	handler StreamHandler
 	conn    *websocket.Conn
 	done    chan struct{}
@@ -48,17 +49,50 @@ type StreamClient struct {
 }
 
 // NewStreamClient creates a StreamClient for the given base URL and params.
+// If baseURL cannot be converted to a valid WebSocket URL (e.g. it has no
+// recognizable scheme), the error is captured and surfaced by Connect.
 func NewStreamClient(baseURL string, params StreamParams, handler StreamHandler) *StreamClient {
+	wsURL, wsErr := buildStreamURL(baseURL, params)
 	return &StreamClient{
-		wsURL:   buildStreamURL(baseURL, params),
+		wsURL:   wsURL,
+		wsErr:   wsErr,
 		handler: handler,
 		done:    make(chan struct{}),
 	}
 }
 
+// convertWebSocketScheme converts an HTTP/HTTPS base URL to a WebSocket URL
+// using net/url. Unlike a naive strings.NewReplacer, it correctly handles
+// schemeless loopback addresses (e.g. "127.0.0.1:8092"), ws/wss passthrough,
+// trailing slashes, and preserved query strings. It requires an explicit
+// http/https/ws/wss scheme and rejects anything else.
+func convertWebSocketScheme(baseURL string) (string, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid stream URL %q: %w", baseURL, err)
+	}
+	switch u.Scheme {
+	case "http":
+		u.Scheme = "ws"
+	case "https":
+		u.Scheme = "wss"
+	case "ws", "wss":
+		// passthrough — already a WebSocket scheme
+	default:
+		return "", fmt.Errorf("invalid stream URL %q: missing or unsupported scheme %q (want http/https/ws/wss)", baseURL, u.Scheme)
+	}
+	// Strip a trailing slash so appending "/v1/listen" doesn't produce a
+	// double slash ("host//v1/listen").
+	u.Path = strings.TrimSuffix(u.Path, "/")
+	return u.String(), nil
+}
+
 // buildStreamURL converts an HTTP base URL to a WebSocket URL with query params.
-func buildStreamURL(baseURL string, p StreamParams) string {
-	wsBase := strings.NewReplacer("https://", "wss://", "http://", "ws://").Replace(baseURL)
+func buildStreamURL(baseURL string, p StreamParams) (string, error) {
+	wsBase, err := convertWebSocketScheme(baseURL)
+	if err != nil {
+		return "", err
+	}
 
 	lang := p.Language
 	if lang == "" {
@@ -82,13 +116,19 @@ func buildStreamURL(baseURL string, p StreamParams) string {
 	q.Set("encoding", enc)
 	q.Set("sample_rate", fmt.Sprintf("%d", sr))
 
-	return wsBase + "/v1/listen?" + q.Encode()
+	return wsBase + "/v1/listen?" + q.Encode(), nil
 }
 
 // Connect dials the WebSocket server and starts the read goroutine. Calling
 // Connect twice on the same StreamClient returns an error instead of starting
 // a second readLoop (which would double-close sc.done and panic).
 func (sc *StreamClient) Connect(ctx context.Context) error {
+	// Surface any URL-conversion error captured at construction time so
+	// callers learn about a bad baseURL on Connect rather than dialing a
+	// misrouted address.
+	if sc.wsErr != nil {
+		return fmt.Errorf("ws url: %w", sc.wsErr)
+	}
 	sc.mu.Lock()
 	if sc.conn != nil {
 		sc.mu.Unlock()
