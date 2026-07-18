@@ -167,12 +167,24 @@ func New(baseURL string, opts ...Option) *Client {
 	return c
 }
 
-// IsAvailable checks if the STT service is reachable via /health.
+// IsAvailable checks if the STT service is reachable.
+// It tries /health first (ox-whisper), then falls back to /v1/models
+// (OpenAI, Groq, and other cloud providers that don't expose /health).
 func (c *Client) IsAvailable() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second) //nolint:mnd
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/health", nil)
+	// Try /health first (self-hosted ox-whisper).
+	if c.tryEndpoint(ctx, c.baseURL+"/health") {
+		return true
+	}
+	// Fall back to /v1/models (OpenAI, Groq, etc.).
+	return c.tryEndpoint(ctx, c.baseURL+"/v1/models")
+}
+
+// tryEndpoint returns true if the given URL responds with HTTP 200.
+func (c *Client) tryEndpoint(ctx context.Context, url string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false
 	}
