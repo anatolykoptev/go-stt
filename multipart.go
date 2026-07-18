@@ -27,8 +27,11 @@ func (c *Client) buildMultipart(w io.Writer, audioReader io.Reader, filename, fo
 	if err := writeField(mw, "model", c.model); err != nil {
 		return "", err
 	}
-	if err := writeField(mw, "language", c.language); err != nil {
-		return "", err
+	// language is optional — skip if empty (lets the STT service auto-detect).
+	if c.language != "" {
+		if err := writeField(mw, "language", c.language); err != nil {
+			return "", err
+		}
 	}
 
 	format := c.format
