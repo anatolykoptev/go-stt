@@ -107,12 +107,23 @@ func buildStreamURL(baseURL string, p StreamParams) (string, error) {
 		sr = defaultStreamSampleRate
 	}
 
+	// VAD and Punctuate default to true when nil (matching the server's
+	// default behavior and the doc comments on StreamParams).
+	vad := true
+	if p.VAD != nil {
+		vad = *p.VAD
+	}
+	punctuate := true
+	if p.Punctuate != nil {
+		punctuate = *p.Punctuate
+	}
+
 	q := url.Values{}
 	q.Set("language", lang)
-	q.Set("vad", fmt.Sprintf("%t", p.VAD))
+	q.Set("vad", fmt.Sprintf("%t", vad))
 	q.Set("interim_results", fmt.Sprintf("%t", p.InterimResults))
 	q.Set("smart_format", fmt.Sprintf("%t", p.SmartFormat))
-	q.Set("punctuate", fmt.Sprintf("%t", p.Punctuate))
+	q.Set("punctuate", fmt.Sprintf("%t", punctuate))
 	q.Set("encoding", enc)
 	q.Set("sample_rate", fmt.Sprintf("%d", sr))
 
