@@ -27,6 +27,7 @@ type Client struct {
 	retry           *retryConfig
 	cb              *circuitBreaker
 	apiKey          string
+	tempDir         string
 }
 
 // Option configures the Client.
@@ -125,6 +126,12 @@ func WithCircuitBreaker(maxFails int, cooldown time.Duration) Option {
 // request. Required for OpenAI API; self-hosted ox-whisper does not need it.
 func WithAPIKey(key string) Option {
 	return func(c *Client) { c.apiKey = key }
+}
+
+// WithTempDir sets the directory used for temporary files downloaded by
+// TranscribeURL/TranscribeURLVerbose. Defaults to os.TempDir() when unset.
+func WithTempDir(dir string) Option {
+	return func(c *Client) { c.tempDir = dir }
 }
 
 // setAuth sets the Authorization header on an HTTP request if an API key is configured.
