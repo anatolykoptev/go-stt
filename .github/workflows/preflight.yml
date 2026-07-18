@@ -1,10 +1,6 @@
 # CI preflight gate for go-stt.
 # Public repo -> free GitHub-hosted arm64 runner (prod-box parity).
-# Gate = `make preflight` (gofmt + vet + errcheck + staticcheck + build + race tests).
-#
-# Follow-up (not blocking): WebSocket protocol conformance via the Autobahn
-# Test Suite (https://github.com/crossbario/autobahn-testsuite) — needs a
-# docker/autobahn environment, not wired here.
+# Gate = `make preflight` (gofmt + vet + build + race tests).
 name: preflight
 
 on: [push, pull_request]
@@ -12,13 +8,18 @@ on: [push, pull_request]
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   preflight:
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: stable
           cache: true
       - run: make preflight

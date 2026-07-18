@@ -1,0 +1,30 @@
+# Nightly full test suite for go-stt.
+# Runs the complete test suite with -race on the free arm64 runner.
+# Catches flaky tests that pass on a single preflight run but fail under
+# repetition, and verifies the full suite stays green without -skip flags.
+name: nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 03:00 UTC daily
+  workflow_dispatch: {}  # manual trigger
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  nightly:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+      # Full suite, no -skip, with -count=3 to catch flaky tests.
+      - run: GOWORK=off go test -race -count=3 -timeout 300s .

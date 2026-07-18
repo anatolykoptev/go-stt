@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -187,8 +188,8 @@ func TestRetryContextCancel(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error after context cancel")
 		}
-		if err != context.Canceled {
-			t.Errorf("err = %v, want context.Canceled", err)
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled (or wrapping it)", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for cancelled call to return")
