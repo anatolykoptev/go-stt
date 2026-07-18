@@ -21,6 +21,11 @@ const (
 	// close frame before force-closing the connection. Keeps callers from
 	// blocking forever on a hung server.
 	defaultCloseTimeout = 5 * time.Second
+	// defaultWSReadLimit caps the size of a single inbound WebSocket message.
+	// Without it a malicious/buggy server could send a 1GB frame and force
+	// ReadMessage to allocate the whole payload (memory bomb). 10MB is well
+	// above any legitimate Deepgram event while bounding worst-case alloc.
+	defaultWSReadLimit = 10 * 1024 * 1024
 )
 
 // StreamClient manages a WebSocket connection to /v1/listen.
@@ -95,6 +100,10 @@ func (sc *StreamClient) Connect(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("ws dial: %w", err)
 	}
+	// Cap inbound message size so a malicious/buggy server can't force a
+	// giant allocation (memory bomb). gorilla returns an error on the next
+	// ReadMessage that exceeds the limit; readLoop routes it to OnError.
+	conn.SetReadLimit(defaultWSReadLimit)
 	sc.mu.Lock()
 	// Re-check under lock in case a concurrent Connect raced past the first guard.
 	if sc.conn != nil {
