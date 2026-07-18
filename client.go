@@ -94,6 +94,14 @@ func WithCustomSpelling(m map[string]string) Option {
 // surfaces the misconfiguration loudly at construction time rather than silently
 // looping an unbounded number of times or silently clamping the value.
 func WithRetry(maxAttempts int, baseDelay time.Duration) Option {
+	return WithRetryWithMaxDelay(maxAttempts, baseDelay, 30*time.Second) //nolint:mnd
+}
+
+// WithRetryWithMaxDelay is like WithRetry but allows configuring maxDelay
+// (the cap on exponential backoff). WithRetry uses a default of 30s.
+// maxDelay must be > 0; it may be less than baseDelay (baseDelay is capped
+// immediately on the first doubling).
+func WithRetryWithMaxDelay(maxAttempts int, baseDelay, maxDelay time.Duration) Option {
 	const maxAllowedAttempts = 100 //nolint:mnd
 	if maxAttempts < 1 || maxAttempts > maxAllowedAttempts {
 		panic(fmt.Sprintf("stt.WithRetry: maxAttempts must be in [1, %d], got %d", maxAllowedAttempts, maxAttempts))
@@ -101,11 +109,14 @@ func WithRetry(maxAttempts int, baseDelay time.Duration) Option {
 	if baseDelay <= 0 {
 		panic(fmt.Sprintf("stt.WithRetry: baseDelay must be > 0, got %v", baseDelay))
 	}
+	if maxDelay <= 0 {
+		panic(fmt.Sprintf("stt.WithRetry: maxDelay must be > 0, got %v", maxDelay))
+	}
 	return func(c *Client) {
 		c.retry = &retryConfig{
 			maxAttempts: maxAttempts,
 			baseDelay:   baseDelay,
-			maxDelay:    30 * time.Second, //nolint:mnd
+			maxDelay:    maxDelay,
 		}
 	}
 }
