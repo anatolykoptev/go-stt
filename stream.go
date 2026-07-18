@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -15,6 +17,10 @@ const (
 	defaultStreamLanguage   = "en"
 	defaultStreamSampleRate = 16000
 	defaultStreamEncoding   = "pcm_s16le"
+	// defaultCloseTimeout bounds how long Close() waits for a graceful server
+	// close frame before force-closing the connection. Keeps callers from
+	// blocking forever on a hung server.
+	defaultCloseTimeout = 5 * time.Second
 )
 
 // StreamClient manages a WebSocket connection to /v1/listen.
@@ -24,6 +30,16 @@ type StreamClient struct {
 	conn    *websocket.Conn
 	done    chan struct{}
 	mu      sync.Mutex
+
+	// closed is set before the underlying conn is closed so readLoop can
+	// distinguish a deliberate ForceClose from a server-initiated error.
+	closed atomic.Bool
+	// closeOnce guards the underlying conn.Close() so concurrent
+	// ForceClose/Close calls are idempotent.
+	closeOnce sync.Once
+	// doneOnce guards close(sc.done) so a second Connect/readLoop path can't
+	// double-close the channel and panic.
+	doneOnce sync.Once
 }
 
 // NewStreamClient creates a StreamClient for the given base URL and params.
@@ -64,27 +80,55 @@ func buildStreamURL(baseURL string, p StreamParams) string {
 	return wsBase + "/v1/listen?" + q.Encode()
 }
 
-// Connect dials the WebSocket server and starts the read goroutine.
+// Connect dials the WebSocket server and starts the read goroutine. Calling
+// Connect twice on the same StreamClient returns an error instead of starting
+// a second readLoop (which would double-close sc.done and panic).
 func (sc *StreamClient) Connect(ctx context.Context) error {
+	sc.mu.Lock()
+	if sc.conn != nil {
+		sc.mu.Unlock()
+		return fmt.Errorf("stream already connected")
+	}
+	sc.mu.Unlock()
+
 	conn, _, err := websocket.DefaultDialer.DialContext(ctx, sc.wsURL, nil)
 	if err != nil {
 		return fmt.Errorf("ws dial: %w", err)
 	}
 	sc.mu.Lock()
+	// Re-check under lock in case a concurrent Connect raced past the first guard.
+	if sc.conn != nil {
+		sc.mu.Unlock()
+		_ = conn.Close() //nolint:errcheck // discard the extra connection
+		return fmt.Errorf("stream already connected")
+	}
 	sc.conn = conn
+	sc.closed.Store(false)
 	sc.mu.Unlock()
 
 	go sc.readLoop()
 	return nil
 }
 
-// readLoop reads messages from the server until the connection closes.
+// readLoop reads messages from the server until the connection closes. The
+// done channel is closed exactly once via doneOnce so a second Connect (or any
+// other path) cannot double-close it and panic.
 func (sc *StreamClient) readLoop() {
-	defer close(sc.done)
+	defer sc.doneOnce.Do(func() { close(sc.done) })
 	for {
-		msgType, data, err := sc.conn.ReadMessage()
+		// Bail out early if ForceClose already tore the conn down.
+		if sc.closed.Load() {
+			return
+		}
+		sc.mu.Lock()
+		conn := sc.conn
+		sc.mu.Unlock()
+		if conn == nil {
+			return
+		}
+		msgType, data, err := conn.ReadMessage()
 		if err != nil {
-			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+			if !sc.closed.Load() && !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				sc.handler.OnError(fmt.Errorf("ws read: %w", err))
 			}
 			return
@@ -119,13 +163,23 @@ func (sc *StreamClient) Finalize() error {
 	return sc.sendControl("Finalize")
 }
 
-// Close sends a CloseStream control message and waits for the connection to end.
+// Close sends a CloseStream control message and waits for the connection to
+// end. If the server does not respond within defaultCloseTimeout, the
+// connection is force-closed so the caller never blocks forever on a hung
+// server.
 func (sc *StreamClient) Close() error {
 	if err := sc.sendControl("CloseStream"); err != nil {
+		// Best-effort: still ensure the conn is torn down.
+		sc.ForceClose()
 		return err
 	}
-	<-sc.done
-	return nil
+	select {
+	case <-sc.done:
+		return nil
+	case <-time.After(defaultCloseTimeout):
+		sc.ForceClose()
+		return nil
+	}
 }
 
 // Done returns a channel that is closed when the connection ends.
@@ -134,13 +188,23 @@ func (sc *StreamClient) Done() <-chan struct{} {
 }
 
 // ForceClose closes the underlying WebSocket connection immediately without
-// sending a CloseStream control message. Use when graceful close is not possible.
+// sending a CloseStream control message. Use when graceful close is not
+// possible. It is safe to call concurrently and multiple times. Setting a zero
+// read deadline unblocks any in-flight ReadMessage in readLoop so the goroutine
+// exits promptly.
 func (sc *StreamClient) ForceClose() {
+	sc.closed.Store(true)
 	sc.mu.Lock()
-	defer sc.mu.Unlock()
-	if sc.conn != nil {
-		sc.conn.Close() //nolint:errcheck // best-effort force close
+	conn := sc.conn
+	sc.mu.Unlock()
+	if conn == nil {
+		return
 	}
+	// Unblock a blocked ReadMessage so readLoop exits immediately.
+	_ = conn.SetReadDeadline(time.Now()) //nolint:errcheck // best-effort
+	sc.closeOnce.Do(func() {
+		_ = conn.Close() //nolint:errcheck // best-effort force close
+	})
 }
 
 // sendControl sends a JSON text frame with {"type": typeName}.
