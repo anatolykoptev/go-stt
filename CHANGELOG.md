@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/anatolykoptev/go-stt/compare/v0.3.0...v0.4.0) (2026-07-18)
+
+
+### Features
+
+* cloud-compatible IsAvailable fallback + optional language field ([#45](https://github.com/anatolykoptev/go-stt/issues/45)) ([dba28dc](https://github.com/anatolykoptev/go-stt/commit/dba28dcc15b96c48273fabcd62f755503487df1f))
+
 ## [0.3.0](https://github.com/anatolykoptev/go-stt/compare/v0.2.0...v0.3.0) (2026-07-18)
 
 
