@@ -26,6 +26,7 @@ type Client struct {
 	customSpelling  map[string]string
 	retry           *retryConfig
 	cb              *circuitBreaker
+	apiKey          string
 }
 
 // Option configures the Client.
@@ -119,6 +120,20 @@ func WithCircuitBreaker(maxFails int, cooldown time.Duration) Option {
 	}
 }
 
+// WithAPIKey sets the API key sent as "Authorization: Bearer <key>" on all
+// HTTP requests (transcription, models, health) and on the WebSocket upgrade
+// request. Required for OpenAI API; self-hosted ox-whisper does not need it.
+func WithAPIKey(key string) Option {
+	return func(c *Client) { c.apiKey = key }
+}
+
+// setAuth sets the Authorization header on an HTTP request if an API key is configured.
+func (c *Client) setAuth(req *http.Request) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+}
+
 // New creates an STT client for the given base URL (e.g. "http://127.0.0.1:8092").
 func New(baseURL string, opts ...Option) *Client {
 	c := &Client{
@@ -143,6 +158,7 @@ func (c *Client) IsAvailable() bool {
 	if err != nil {
 		return false
 	}
+	c.setAuth(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return false

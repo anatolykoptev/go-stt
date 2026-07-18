@@ -46,12 +46,20 @@ func (h *channelHandler) OnError(err error) {
 
 // StreamWithChannels creates a streaming session returning Go channels.
 func StreamWithChannels(ctx context.Context, baseURL string, params StreamParams) (*ChannelStream, error) {
+	return StreamWithChannelsAndAPIKey(ctx, baseURL, params, "")
+}
+
+// StreamWithChannelsAndAPIKey creates a streaming session with an API key
+// for the Authorization: Bearer header on the WebSocket upgrade request.
+// Pass an empty string for self-hosted endpoints that don't require auth.
+func StreamWithChannelsAndAPIKey(ctx context.Context, baseURL string, params StreamParams, apiKey string) (*ChannelStream, error) {
 	events := make(chan StreamEvent, channelBufferSize)
 	errs := make(chan error, channelBufferSize)
 
 	cs := &ChannelStream{events: events, errs: errs}
 	h := &channelHandler{events: events, errs: errs, droppedEvents: &cs.droppedEvents}
 	sc := NewStreamClient(baseURL, params, h)
+	sc.SetAPIKey(apiKey)
 
 	if err := sc.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("stream connect: %w", err)

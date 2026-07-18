@@ -109,6 +109,7 @@ func (c *Client) postTranscription(ctx context.Context, body io.Reader, contentT
 		return nil, 0, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", contentType)
+	c.setAuth(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ type StreamClient struct {
 	conn    *websocket.Conn
 	done    chan struct{}
 	mu      sync.Mutex
+	apiKey  string
 
 	// closed is set before the underlying conn is closed so readLoop can
 	// distinguish a deliberate ForceClose from a server-initiated error.
@@ -59,6 +61,12 @@ func NewStreamClient(baseURL string, params StreamParams, handler StreamHandler)
 		handler: handler,
 		done:    make(chan struct{}),
 	}
+}
+
+// SetAPIKey sets the API key for the Authorization: Bearer header on the
+// WebSocket upgrade request. Must be called before Connect.
+func (sc *StreamClient) SetAPIKey(key string) {
+	sc.apiKey = key
 }
 
 // convertWebSocketScheme converts an HTTP/HTTPS base URL to a WebSocket URL
@@ -147,7 +155,14 @@ func (sc *StreamClient) Connect(ctx context.Context) error {
 	}
 	sc.mu.Unlock()
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, sc.wsURL, nil)
+	// Pass the Authorization header on the WebSocket upgrade request if an
+	// API key is configured (required for OpenAI API; self-hosted ignores it).
+	var header http.Header
+	if sc.apiKey != "" {
+		header = http.Header{}
+		header.Set("Authorization", "Bearer "+sc.apiKey)
+	}
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, sc.wsURL, header)
 	if err != nil {
 		return fmt.Errorf("ws dial: %w", err)
 	}

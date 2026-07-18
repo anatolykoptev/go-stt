@@ -138,6 +138,7 @@ func (c *Client) Models(ctx context.Context) (*ModelList, error) {
 		if err != nil {
 			return nil, fmt.Errorf("create request: %w", err)
 		}
+		c.setAuth(req)
 
 		resp, err := c.http.Do(req)
 		if err != nil {
