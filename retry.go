@@ -31,6 +31,24 @@ type circuitBreaker struct {
 	openUntil     time.Time
 	state         cbState
 	probeInFlight bool // true while a half-open probe request is in progress
+	now           func() time.Time
+}
+
+// setClock replaces the clock function used for cooldown timing.
+// Used in tests for deterministic behavior without real sleeps.
+func (cb *circuitBreaker) setClock(now func() time.Time) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.now = now
+}
+
+// clock returns the current time, defaulting to time.Now if no clock
+// has been injected via setClock.
+func (cb *circuitBreaker) clock() time.Time {
+	if cb.now != nil {
+		return cb.now()
+	}
+	return time.Now()
 }
 
 // allow returns true if a request is allowed through the circuit breaker.
@@ -43,7 +61,7 @@ func (cb *circuitBreaker) allow() bool {
 	case cbClosed:
 		return true
 	case cbOpen:
-		if time.Now().Before(cb.openUntil) {
+		if cb.clock().Before(cb.openUntil) {
 			return false
 		}
 		// Cooldown elapsed — transition to half-open and allow a single probe.
@@ -86,14 +104,14 @@ func (cb *circuitBreaker) recordFailure() {
 	if cb.state == cbHalfOpen {
 		// Probe failed — re-open the circuit.
 		cb.state = cbOpen
-		cb.openUntil = time.Now().Add(cb.cooldown)
+		cb.openUntil = cb.clock().Add(cb.cooldown)
 		cb.probeInFlight = false
 		return
 	}
 	cb.failures++
 	if cb.failures >= cb.maxFails {
 		cb.state = cbOpen
-		cb.openUntil = time.Now().Add(cb.cooldown)
+		cb.openUntil = cb.clock().Add(cb.cooldown)
 	}
 }
 
@@ -105,6 +123,9 @@ func doWithRetry[T any](ctx context.Context, rc *retryConfig, cb *circuitBreaker
 	var zero T
 
 	delay := rc.baseDelay
+	if delay > rc.maxDelay {
+		delay = rc.maxDelay
+	}
 	var lastErr error
 
 	for attempt := range rc.maxAttempts {
