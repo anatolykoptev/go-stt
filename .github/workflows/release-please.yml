@@ -1,0 +1,37 @@
+# Automated releases for go-stt via release-please.
+# Go module: the git tag IS the release — no publish job needed.
+# The Go module proxy (proxy.golang.org) fetches and serves the tag automatically.
+#
+# Flow: conventional commits → release-please opens a "release PR" →
+# merge → tag + GitHub Release → proxy serves vX.Y.Z via `go get`.
+#
+# NEVER `git tag` by hand — it desyncs .release-please-manifest.json.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+      major: ${{ steps.release.outputs.major }}
+      minor: ${{ steps.release.outputs.minor }}
+      patch: ${{ steps.release.outputs.patch }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          release-type: go
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
