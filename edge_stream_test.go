@@ -183,4 +183,3 @@ func TestStreamFileNotFound(t *testing.T) {
 		t.Errorf("err = %q, want to contain 'read audio file'", err.Error())
 	}
 }
-
