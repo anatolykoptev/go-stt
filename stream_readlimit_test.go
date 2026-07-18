@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/goleak"
 
 	stt "github.com/anatolykoptev/go-stt"
 )
@@ -40,6 +41,8 @@ func TestWSReadLimitRejectsHugeMessage(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	opts := goleak.IgnoreCurrent()
+	t.Cleanup(func() { goleak.VerifyNone(t, opts) })
 
 	// readLoop must terminate (connection torn down) and OnError must be
 	// called with a read-limit error — NOT allocate the full payload.
@@ -70,6 +73,7 @@ func TestWSReadLimitAllowsNormalMessage(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	defer sc.ForceClose()
 	time.Sleep(50 * time.Millisecond)
 
 	evts := h.Events()
