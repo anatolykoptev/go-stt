@@ -86,6 +86,7 @@ func TestStreamServerError(t *testing.T) {
 	if err := sc.Connect(context.Background()); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
+	defer sc.ForceClose()
 	time.Sleep(50 * time.Millisecond)
 
 	evts := h.Events()
