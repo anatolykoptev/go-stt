@@ -4,6 +4,7 @@ package stt
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -81,9 +82,23 @@ func WithCustomSpelling(m map[string]string) Option {
 }
 
 // WithRetry enables automatic retry with exponential backoff for transient errors.
-// maxAttempts is the total number of attempts (including the first); baseDelay is the
-// initial wait before the second attempt.
+// maxAttempts is the total number of attempts (including the first) and must satisfy
+// 1 <= maxAttempts <= 100 (100 is a generous library ceiling; canonical SDKs use 3).
+// baseDelay is the initial wait before the second attempt and must be > 0.
+//
+// On invalid input, WithRetry panics. This follows the Go convention for
+// programmer/configuration errors (cf. regexp.MustCompile, time.Tick) and avoids a
+// breaking change to the Option/New signatures, which do not return errors. A panic
+// surfaces the misconfiguration loudly at construction time rather than silently
+// looping an unbounded number of times or silently clamping the value.
 func WithRetry(maxAttempts int, baseDelay time.Duration) Option {
+	const maxAllowedAttempts = 100 //nolint:mnd
+	if maxAttempts < 1 || maxAttempts > maxAllowedAttempts {
+		panic(fmt.Sprintf("stt.WithRetry: maxAttempts must be in [1, %d], got %d", maxAllowedAttempts, maxAttempts))
+	}
+	if baseDelay <= 0 {
+		panic(fmt.Sprintf("stt.WithRetry: baseDelay must be > 0, got %v", baseDelay))
+	}
 	return func(c *Client) {
 		c.retry = &retryConfig{
 			maxAttempts: maxAttempts,
