@@ -2,11 +2,13 @@ package stt_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -102,3 +104,89 @@ func TestTranscribeURLCleansTempOnError(t *testing.T) {
 		}
 	}
 }
+
+// Download hardening: the API key must never reach the audio host, redirects
+// are refused, errors never echo the URL, and the body is size-capped.
+
+func TestDownloadNeverSendsAPIKey(t *testing.T) {
+	var got atomic.Value
+	got.Store("unset")
+	foreign := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.Store(r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer foreign.Close()
+
+	c := stt.New("http://127.0.0.1:1", stt.WithAPIKey("k"))
+	_, _ = c.TranscribeURL(context.Background(), foreign.URL+"/voice.ogg")
+	if v := got.Load().(string); v != "" {
+		t.Fatalf("foreign host saw Authorization %q, want empty (unset = no request)", v)
+	}
+}
+
+func TestDownloadRefusesRedirects(t *testing.T) {
+	var hitsB atomic.Int32
+	b := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitsB.Add(1)
+	}))
+	defer b.Close()
+	a := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, b.URL+"/x.ogg", http.StatusFound)
+	}))
+	defer a.Close()
+
+	_, err := stt.New("http://127.0.0.1:1", stt.WithAPIKey("k")).TranscribeURL(context.Background(), a.URL+"/voice.ogg")
+	if err == nil {
+		t.Fatal("expected error on redirect")
+	}
+	if n := hitsB.Load(); n != 0 {
+		t.Fatalf("redirect target received %d requests, want 0", n)
+	}
+}
+
+func TestDownloadErrorNeverContainsURL(t *testing.T) {
+	_, err := stt.New("http://127.0.0.1:1").TranscribeURL(context.Background(),
+		"http://127.0.0.1:1/file/botFAKE123:TOKENPART/voice.ogg")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, s := range []string{"bot", "TOKENPART", "FAKE123"} {
+		if strings.Contains(err.Error(), s) {
+			t.Fatalf("error %q leaks %q", err.Error(), s)
+		}
+	}
+	// parse failure path
+	_, err = stt.New("http://127.0.0.1:1").TranscribeURL(context.Background(), "http://bot:TOKENPART@[::1/x")
+	if err == nil || strings.Contains(err.Error(), "TOKENPART") {
+		t.Fatalf("parse error must be fixed and URL-free, got %v", err)
+	}
+}
+
+func TestDownloadSizeCap(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(make([]byte, 2048))
+	}))
+	defer srv.Close()
+
+	_, err := stt.New("http://127.0.0.1:1", stt.WithMaxDownload(1024)).TranscribeURL(context.Background(), srv.URL+"/v.ogg")
+	if !errors.Is(err, stt.ErrResponseTooLarge) {
+		t.Fatalf("want ErrResponseTooLarge, got %v", err)
+	}
+}
+
+func TestWithHTTPClientUsedForDownload(t *testing.T) {
+	var used atomic.Bool
+	rt := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		used.Store(true)
+		return &http.Response{StatusCode: 404, Body: http.NoBody, Header: http.Header{}}, nil
+	})
+	c := stt.New("http://127.0.0.1:1", stt.WithHTTPClient(&http.Client{Transport: rt}))
+	_, _ = c.TranscribeURL(context.Background(), "http://example.invalid/v.ogg")
+	if !used.Load() {
+		t.Fatal("custom client not used")
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

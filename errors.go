@@ -1,6 +1,9 @@
 package stt
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
 
 // Error represents an STT API error with HTTP status code.
 type Error struct {
@@ -20,3 +23,6 @@ func (e *Error) IsTransient() bool {
 	}
 	return false
 }
+
+// ErrResponseTooLarge is returned when a downloaded audio file exceeds the cap.
+var ErrResponseTooLarge = errors.New("stt: download exceeds size limit")
