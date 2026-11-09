@@ -28,6 +28,7 @@ type Client struct {
 	cb              *circuitBreaker
 	apiKey          string
 	tempDir         string
+	maxDownload     int64
 }
 
 // Option configures the Client.
@@ -50,7 +51,11 @@ func WithFormat(format string) Option {
 
 // WithTimeout sets the HTTP request timeout (default: 60s).
 func WithTimeout(timeout time.Duration) Option {
-	return func(c *Client) { c.http.Timeout = timeout }
+	return func(c *Client) {
+		hc := *c.http // copy: never mutate a client the caller supplied
+		hc.Timeout = timeout
+		c.http = &hc
+	}
 }
 
 // WithPunctuate enables or disables automatic punctuation.
@@ -132,9 +137,10 @@ func WithCircuitBreaker(maxFails int, cooldown time.Duration) Option {
 	}
 }
 
-// WithAPIKey sets the API key sent as "Authorization: Bearer <key>" on all
-// HTTP requests (transcription, models, health) and on the WebSocket upgrade
-// request. Required for OpenAI API; self-hosted ox-whisper does not need it.
+// WithAPIKey sets the API key sent as "Authorization: Bearer <key>" on requests
+// to the configured base URL (transcription, models, health) and on the
+// WebSocket upgrade request. It is never sent on TranscribeURL downloads
+// (the audio URL is an arbitrary host). Required for OpenAI API; self-hosted ox-whisper does not need it.
 func WithAPIKey(key string) Option {
 	return func(c *Client) { c.apiKey = key }
 }
@@ -195,4 +201,21 @@ func (c *Client) tryEndpoint(ctx context.Context, url string) bool {
 	}
 	defer resp.Body.Close()
 	return resp.StatusCode == http.StatusOK
+}
+
+// WithHTTPClient replaces the HTTP client (transport, proxy, TLS, timeout).
+// Use it to pass a guarded transport when [Client.TranscribeURL] receives URLs
+// you do not control. Apply [WithTimeout] after it to override its timeout.
+func WithHTTPClient(hc *http.Client) Option {
+	return func(c *Client) {
+		if hc != nil {
+			c.http = hc
+		}
+	}
+}
+
+// WithMaxDownload caps the size of audio fetched by TranscribeURL (default
+// 256 MiB); larger downloads fail with ErrResponseTooLarge.
+func WithMaxDownload(n int64) Option {
+	return func(c *Client) { c.maxDownload = n }
 }

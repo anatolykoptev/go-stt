@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/anatolykoptev/go-stt/compare/v0.4.0...v0.4.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* never send the API key on audio downloads, refuse redirects, keep URLs out of errors ([#50](https://github.com/anatolykoptev/go-stt/issues/50)) ([e1d31c8](https://github.com/anatolykoptev/go-stt/commit/e1d31c8ae3a471e22a768bedeae18356e5ec1c89))
+
 ## [0.4.0](https://github.com/anatolykoptev/go-stt/compare/v0.3.0...v0.4.0) (2026-07-18)
 
 
