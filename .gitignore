@@ -1,0 +1,9 @@
+# Test and coverage output
+*.test
+*.out
+coverage.*
+
+# Local environment files
+.env
+.env.*
+*.env
