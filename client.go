@@ -1,5 +1,10 @@
 // Package stt provides a speech-to-text client for OpenAI-compatible STT APIs
 // (ox-whisper, OpenAI Whisper, etc.) via multipart upload.
+//
+// Deprecated: this module moved to github.com/anatolykoptev/go-kit/voice/stt
+// (go-kit v0.97.16 or newer). Replace the import path
+// github.com/anatolykoptev/go-stt with github.com/anatolykoptev/go-kit/voice/stt;
+// the client API is the same.
 package stt
 
 import (

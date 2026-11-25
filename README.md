@@ -1,3 +1,9 @@
+> **Moved to `github.com/anatolykoptev/go-kit/voice/stt`. This module is deprecated.**
+> The go-kit copy is the maintained one (redacted errors, no transcript logging, circuit breaker,
+> `TranscribeReader`). Migrate with `go get github.com/anatolykoptev/go-kit@latest` (v0.97.16 or
+> newer) and replace the import path `github.com/anatolykoptev/go-stt` with
+> `github.com/anatolykoptev/go-kit/voice/stt`; the client API is the same. This repository will be archived.
+
 # go-stt
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/anatolykoptev/go-stt.svg)](https://pkg.go.dev/github.com/anatolykoptev/go-stt)
