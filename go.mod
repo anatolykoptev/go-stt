@@ -1,3 +1,4 @@
+// Deprecated: moved to github.com/anatolykoptev/go-kit/voice/stt (go-kit v0.97.16+).
 module github.com/anatolykoptev/go-stt
 
 go 1.24
